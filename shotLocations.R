@@ -6,6 +6,8 @@ library(ncaahoopR)
 library(extrafont)
 library(cowplot)
 library(scales)
+library(gt)
+library(gtExtras)
 
 #data(ids)
 
@@ -17,19 +19,47 @@ game_ids <- sju_schedule$game_id[1:7]
 # Grab all shots from Cuse games 
 sju_shots <- get_pbp_game(game_ids)
 
-# Assuming sju_shots is your data frame
-assisted_shots <- sju_shots %>%
-  filter(shot_team == "St. John's", shot_outcome == "made", !is.na(assist))
+filtered_sju_shots_made <- sju_shots %>%
+  filter(shot_team == "St. John's", shot_outcome == "made")
 
-assist_shooter_combinations <- assisted_shots %>%
-  group_by(assist, shooter) %>%
-  summarize(count = n(), .groups = 'drop') %>%
-  arrange(desc(count))
+filtered_sju_shots_made_clean <- filtered_sju_shots_made %>%
+  mutate(description = str_extract(description, ".*made\\s\\w+")) %>%
+  group_by(description) %>%
+  summarize(quantity = n(), .groups = 'drop') %>%
+  arrange(desc(quantity))
 
-top_10_combinations <- assist_shooter_combinations %>%
-  slice(1:10)
+df_wide <- filtered_sju_shots_made_clean %>%
+  separate(description, into = c("Player", "ShotType"), sep = " made ") %>%
+  group_by(Player, ShotType) %>%
+  summarise(quantity = sum(quantity), .groups = 'drop') %>%
+  pivot_wider(names_from = ShotType, values_from = quantity, values_fill = list(quantity = 0)) %>%
+  mutate(InsideScore = Layup + Dunk) %>% # Create a new column for the sum of Layup and Dunk
+  select(-Free) # Remove the Free column
 
-ncaa_logo_url <- "http://web2.ncaa.org/ncaa_style/img/All_Logos/sm/603.gif"
+df_wide <- df_wide %>%
+  mutate(Total = InsideScore + Jumper + Three)
+
+# Sort by the Total column
+df_sorted <- df_wide %>%
+  arrange(desc(Total))
+
+player_photos <- read.csv("/Users/Mason/Desktop/testingdata/Sjubb 2023 Photos - Sheet1.csv")
+
+df_final <- df_sorted %>%
+  left_join(player_photos, by = "Player")
+
+#df_final <- df_final %>%
+  #mutate(Photo = ifelse(is.na(Photo), "", sprintf("<img src='%s' style='height: 30px;'/>", Photo)))
+
+# Now create df_list without the Total column
+df_list <- df_final %>%
+  transmute(
+    Photo,
+    Player, 
+    ShotList = pmap(list(InsideScore, Jumper, Three), ~replace(c(...), c(...) == 0, NA))
+  )
+
+ncaa_logo_url <- "/Users/Mason/Desktop/testingdata/sjulogo.gif"
 
 title_with_logo <- htmltools::tags$div(
   style = "display: flex; align-items: center;",
@@ -37,55 +67,30 @@ title_with_logo <- htmltools::tags$div(
   htmltools::tags$div(
     style = "line-height: 1.1;",
     htmltools::tags$h2("SJUBB 2023-24 Statistics", style = "margin: 0; font-size: 28px;"),  # Adjust font-size as needed
-    htmltools::tags$h3("Common connections", style = "margin: 0; font-size: 12px;")   # Adjust font-size as needed
+    htmltools::tags$h3("Made Shot Breakdown", style = "margin: 0; font-size: 12px;")   # Adjust font-size as needed
   )
 )
 
-my_palette <- scales::col_numeric(
-  palette = "Reds",
-  domain = c(min(top_10_with_photos$count), max(top_10_with_photos$count))
-)
-
-player_photos <- read.csv("/Users/Mason/Desktop/testingdata/Sjubb 2023 Photos - Sheet1.csv")
-
-# Merge the dataframes
-top_10_with_photos <- top_10_combinations %>%
-  left_join(player_photos, by = c("assist" = "Player")) %>%
-  rename(assist_photo = Photo) %>%
-  left_join(player_photos, by = c("shooter" = "Player")) %>%
-  rename(shooter_photo = Photo)
-
-top_10_with_photos <- top_10_with_photos %>%
-  select(assist_photo, assist, shooter_photo, shooter, count)
-
-top_10_with_photos <- top_10_with_photos %>%
-  mutate(shooter = ifelse(shooter == "Glenn Taylor Jr.", "Glenn Taylor Jr", shooter))
-
-# Create a gt table and incorporate logos
-gt_table <- gt(top_10_with_photos) %>%
+shotLocationtable <- df_list %>%
+  gt() %>%
+  gt_plt_bar_stack(
+    column = ShotList, 
+    width = 75,
+    labels = c("Layups/Dunks", "Mid-range", "Threes"),
+    palette = c("#BA0C2F", "#A7A8AA", "#041C2C")
+  ) %>%
   text_transform(
-    locations = cells_body(columns = c(assist_photo)),
+    locations = cells_body(columns = c("Photo")),
     fn = function(x) {
       map(x, ~htmltools::tags$img(src = ., height = 30))
     }
-  ) %>%
-  text_transform(
-    locations = cells_body(columns = c(shooter_photo)),
-    fn = function(x) {
-      map(x, ~htmltools::tags$img(src = ., height = 30))
-    }
-  ) %>%
-  # Setting column labels
-  cols_label(
-    assist_photo = "",
-    assist = "Assist",
-    shooter_photo = "",
-    shooter = "Shooter",
-    count = "Count"
   ) %>%
   cols_align(
     align = "center",
     columns = everything()
+  ) %>%
+  cols_label(
+    Photo = ""  # Set the label of the Photo column to an empty string
   ) %>%
   tab_header(
     title = htmltools::as.tags(title_with_logo)
@@ -93,21 +98,15 @@ gt_table <- gt(top_10_with_photos) %>%
   tab_footnote(
     md("Source: ncaahoopR | Mason Wood")
   ) %>%
-  data_color(
-    columns = c(count),
-    colors = function(x) {
-      my_palette(x)
-    }
-  ) %>%
-  # Add a border around the table
   tab_options(
     table.border.top.color = "#D3D3D3",
     table.border.bottom.color = "#D3D3D3",
     table.border.left.color = "#D3D3D3",
     table.border.right.color = "#D3D3D3"
   ) %>%
-  # Style the table outline
   opt_table_outline(style = "solid", color = "#D3D3D3")
 
-# Display the gt table
-gt_table
+# Display the table
+shotLocationtable
+
+gtsave(shotLocationtable, "/Users/Mason/Desktop/rimages/tab_1.png", expand = 10)
