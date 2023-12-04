@@ -1,6 +1,10 @@
 library(dplyr)
 library(rvest)
 library(httr)
+library(stringr)
+library(dplyr)
+library(gt)
+library(gtExtras)
 
 # Define the URL
 away_url <- "https://stats.ncaa.org/teams/561074"
@@ -34,3 +38,183 @@ home_ncaa_table_selected <- home_ncaa_table %>% dplyr::select(Stat, Home_Rank)
 # Join the data frames by the Stat column using dplyr's left_join function explicitly
 comparison_table <- dplyr::left_join(away_ncaa_table_selected, home_ncaa_table_selected, by = "Stat")
 
+comparison_table <- comparison_table %>%
+  mutate(
+    Away_Rank = str_remove(Away_Rank, "T-"),
+    Home_Rank = str_remove(Home_Rank, "T-")
+  )
+
+comparison_table <- comparison_table %>% 
+  slice(-1, -2, -n()) 
+
+#------------------------------------------------------------------------------------------------
+
+url <- "https://kenpom.com/"
+webpage <- httr::GET(url, user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"))
+html_data <- rvest::read_html(webpage)
+
+# Extracting tables
+tables <- html_data %>% html_nodes("table")
+
+# Extracting the first table
+kenpom_table <- tables %>% 
+  .[[1]] %>% 
+  html_table(fill = TRUE)
+
+# Convert the first row to a character vector to ensure proper name handling
+col_names <- as.character(unlist(kenpom_table[1, ]))
+
+# Make the names unique
+unique_col_names <- make.unique(col_names)
+
+# Remove the first row and set the unique column names
+kenpom_table <- kenpom_table[-1, ]
+colnames(kenpom_table) <- unique_col_names
+
+# Convert the data to a tibble
+kenpom_table <- as_tibble(kenpom_table, .name_repair = "unique")
+
+filtered_kenpom_table <- kenpom_table %>% 
+  filter(Team == "St. John's" | Team == "West Virginia")
+
+original_col_names <- colnames(filtered_kenpom_table)
+
+# Transpose the filtered table
+transposed_table <- t(filtered_kenpom_table)
+
+# Create a data frame from the transposed table
+transposed_table_df <- as.data.frame(transposed_table)
+
+# Replace the first column with the original column names, which represent the statistics
+transposed_table_df <- cbind(Statistic = original_col_names[-1], transposed_table_df[-1, ])
+
+# Since the first row contains the team names, let's set them as the column names
+colnames(transposed_table_df)[-1] <- transposed_table_df[1, -1]
+
+# Remove the first row as it contains the old column names which are now the new column headers
+transposed_table_df <- transposed_table_df[-1, ]
+
+# Optionally, reset the row names to remove the row numbers
+rownames(transposed_table_df) <- NULL
+
+filtered_transposed_table_df <- transposed_table_df %>%
+  filter(Statistic %in% c("Conf", "W-L", "AdjO.1", "AdjD.1", "AdjT.1", "Luck.1"))
+
+#------------------------------------------------------------------------------------------
+
+colnames(comparison_table) <- paste0("Col", 1:ncol(comparison_table))
+colnames(filtered_transposed_table_df) <- paste0("Col", 1:ncol(filtered_transposed_table_df))
+
+# Combining the data frames
+combined_table <- bind_rows(comparison_table, filtered_transposed_table_df)
+
+combined_table <- combined_table %>%
+  rename(
+    Statistic = Col1,
+    Away = Col2,
+    Home = Col3
+  )
+
+combined_table$Away <- as.numeric(as.character(combined_table$Away))
+combined_table$Home <- as.numeric(as.character(combined_table$Home))
+
+# Handle NA values. Replace NA with 0 or some other default value.
+combined_table$Away[is.na(combined_table$Away)] <- 0
+combined_table$Home[is.na(combined_table$Home)] <- 0
+
+combined_table <- combined_table %>%
+  mutate(
+    AwayPercentage = 100 - round((Away / 362) * 100, digits = 0),
+    AwayRanking = paste(AwayPercentage, " (", Away, "/362)", sep = ""),  # Removed the "%" symbol here
+    HomePercentage = 100 - round((Home / 362) * 100, digits = 0),
+    HomeRanking = paste(HomePercentage, " (", Home, "/362)", sep = "")  # Removed the "%" symbol here
+  )
+
+
+combined_table <- combined_table %>%
+  filter(!(Statistic %in% c("Scoring Offense", "Scoring Defense", "Winning Percentage", "Field Goal Percentage Defense", "Three Point Percentage Defense", "W-L", "Conf", "Fouls Per Game", "Betting line", "Kenpom Rank")))
+
+#------------------------------------------------------------------------------------------
+
+combined_table <- combined_table %>%
+  dplyr::select(AwayRanking, Statistic, HomeRanking, everything()) %>%
+  dplyr::select(-Away, -Home, -AwayPercentage, -HomePercentage) %>%
+  add_row(Statistic = "Record", AwayRanking = "5-2", HomeRanking = "4-3", .before = 1) %>%
+  add_row(Statistic = "Kenpom Ranking", AwayRanking = "60", HomeRanking = "100", .before = 1) %>%
+  mutate(Statistic = factor(Statistic, levels = c("Record", "Kenpom Ranking", "Scoring Margin", "AdjO.1", "AdjD.1", "AdjT.1", "Luck.1", "Assist/Turnover Ratio", "Turnovers Forced Per Game", "Rebound Margin", "Rebounds Per Game", "Rebounds (Offensive) Per Game", "Rebounds (Defensive) Per Game", "Effective FG pct", "Field Goal Percentage", "Free Throw Percentage", "Free Throw Attempts Per Game", "Free Throws Made Per Game", "Three Point Percentage", "Three Point Attempts Per Game", "Three Pointers Per Game"))) %>%
+  mutate(Statistic = fct_recode(Statistic,
+                                "Adjusted Offensive Efficiency" = "AdjO.1",
+                                "Adjusted Defensive Efficiency" = "AdjD.1",
+                                "Adjusted Tempo" = "AdjT.1",
+                                "Luck" = "Luck.1"
+  )) %>%
+  arrange(Statistic)
+
+away_label <- "<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/St._John%27s_Red_Storm_logo.svg/800px-St._John%27s_Red_Storm_logo.svg.png' style='height:50px;' />"
+home_label <- "<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/e/e8/West_Virginia_Mountaineers_logo.svg/2180px-West_Virginia_Mountaineers_logo.svg.png' style='height:50px;' />"
+middle_label <- "<img src= 'https://www.bigeast.com/common/controls/image_handler.aspx?thumb_id=0&image_path=/images/2022/5/19/BIG_12_BIG_EAST.png' style='height:50px;' />"
+
+combined_table <- combined_table %>%
+  mutate(
+    AwayRanking = sub("(\\d+) (.+)", "\\1<br><span style='font-size: 10px;'>\\2</span>", AwayRanking),
+    HomeRanking = sub("(\\d+) (.+)", "\\1<br><span style='font-size: 10px;'>\\2</span>", HomeRanking)
+  )
+
+get_color <- function(value) {
+  col_numeric(palette = c("red", "white", "green"), domain = c(0, 100))(value)
+}
+
+# Function to apply color to the numeric value in the HTML string
+apply_color <- function(html_string) {
+  # Extract the numeric value from the string
+  numeric_value <- as.numeric(gsub("<.*", "", html_string))
+  # Get the color for this numeric value
+  color <- get_color(numeric_value)
+  # Construct the new HTML string with the color applied
+  new_html_string <- gsub("^(\\d+)(<br>.+)$", 
+                          paste0("<span style='background-color:", color, ";'>\\1</span>", "\\2"), 
+                          html_string)
+  new_html_string
+}
+
+combined_table <- combined_table %>%
+  mutate(
+    AwayRanking = ifelse(Statistic %in% c("Scoring Margin", "Adjusted Offensive Efficiency", "Adjusted Defensive Efficiency", "Adjusted Tempo", "Luck", "Assist/Turnover Ratio", "Turnovers Forced Per Game", "Rebound Margin", "Rebounds Per Game", "Rebounds (Offensive) Per Game", "Rebounds (Defensive) Per Game", "Effective FG pct", "Field Goal Percentage", "Free Throw Percentage", "Free Throw Attempts Per Game", "Free Throws Made Per Game", "Three Point Percentage", "Three Point Attempts Per Game", "Three Pointers Per Game"), 
+                         mapply(apply_color, AwayRanking), 
+                         AwayRanking),
+    HomeRanking = ifelse(Statistic %in% c("Scoring Margin", "Adjusted Offensive Efficiency", "Adjusted Defensive Efficiency", "Adjusted Tempo", "Luck", "Assist/Turnover Ratio", "Turnovers Forced Per Game", "Rebound Margin", "Rebounds Per Game", "Rebounds (Offensive) Per Game", "Rebounds (Defensive) Per Game", "Effective FG pct", "Field Goal Percentage", "Free Throw Percentage", "Free Throw Attempts Per Game", "Free Throws Made Per Game", "Three Point Percentage", "Three Point Attempts Per Game", "Three Pointers Per Game"), 
+                         mapply(apply_color, HomeRanking), 
+                         HomeRanking)
+  )
+
+# Now create the gt table and apply the HTML content as markdown
+gt_table <- gt(combined_table) %>%
+  tab_header(
+    title = md("**St. John's @ West Virginia 12/6/23**"),
+    subtitle = md("D1 Percentile Rankings")
+  ) %>%
+  cols_label(
+    AwayRanking = html(away_label),
+    HomeRanking = html(home_label),
+    Statistic = html(middle_label)
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = everything()
+  ) %>%
+  tab_footnote(
+    footnote = md("Source: stats.ncaa.org | Mason Wood")
+  ) %>%
+  tab_options(
+    table.border.top.color = "#D3D3D3",
+    table.border.bottom.color = "#D3D3D3",
+    table.border.left.color = "#D3D3D3",
+    table.border.right.color = "#D3D3D3",
+    heading.title.font.size = px(20),
+    heading.subtitle.font.size = px(16)
+  ) %>%
+  opt_table_outline(style = "solid", color = "#D3D3D3") %>%
+  fmt_markdown(columns = c(AwayRanking, HomeRanking))
+
+# Print the gt table
+print(gt_table)
