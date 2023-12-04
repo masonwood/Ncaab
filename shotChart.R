@@ -42,12 +42,12 @@ court_grob <- grid::rasterGrob(court_image, interpolate = TRUE)
 
 shot_chart <- ggplot(shots_with_loc, aes(x = shot_x, y = shot_y)) +
   annotation_custom(court_grob, xmin = -53.5, xmax = 53.5, ymin = -31, ymax = 31) +  # Add the court image
-  geom_point(data = shots_with_loc %>% filter(shot_outcome == "made"), aes(x = shot_x, y = shot_y), color = "green") +
-  geom_point(data = shots_with_loc %>% filter(shot_outcome == "missed"), aes(x = shot_x, y = shot_y), color = "red", shape = 4) +
-  labs(title = "Shot Chart") +
+  geom_point(data = shots_with_loc %>% filter(shot_outcome == "made"), aes(x = shot_x, y = shot_y), color = "green", position = position_jitter(width = 0.5, height = 0.5)) +
+  geom_point(data = shots_with_loc %>% filter(shot_outcome == "missed"), aes(x = shot_x, y = shot_y), color = "red", shape = 4, position = position_jitter(width = 0.5, height = 0.5)) +
+  labs(title = "St. John's vs Boston College 12/10") +
   theme_minimal() +
   theme(
-    plot.title = element_text(hjust = 0.5, color = "white"),  # Center and color the title
+    plot.title = element_text(hjust = 0.5, color = "black"),  # Center and color the title
     axis.title = element_blank(),  # Remove axis titles
     axis.text = element_blank(),  # Remove axis text
     axis.ticks = element_blank(),  # Remove axis ticks
