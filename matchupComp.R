@@ -6,8 +6,9 @@ library(dplyr)
 library(gt)
 library(gtExtras)
 library(scales)
+library(tidyverse)
 
-away_url <- "https://stats.ncaa.org/teams/561063"
+away_url <- "https://stats.ncaa.org/teams/560796"
 
 # Fetching the webpage
 away_webpage <- httr::GET(away_url, user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"))
@@ -16,7 +17,7 @@ away_html_data <- rvest::read_html(away_webpage)
 away_tables <- away_html_data %>% html_nodes("table")
 away_ncaa_table <- away_tables %>% .[[3]] %>% html_table(fill = TRUE)
 
-home_url <- "https://stats.ncaa.org/teams/561074"
+home_url <- "https://stats.ncaa.org/teams/560851"
 
 home_webpage <- httr::GET(home_url, user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"))
 home_html_data <- rvest::read_html(home_webpage)
@@ -68,12 +69,11 @@ colnames(kenpom_table) <- unique_col_names
 kenpom_table <- as_tibble(kenpom_table, .name_repair = "unique")
 
 filtered_kenpom_table <- kenpom_table %>% 
-  filter(Team == "Sacred Heart" | Team == "St. John's")
-
+  filter(Team == "Connecticut" | Team == "North Carolina")
 
 # May have to be toggled depending on home/away + stat
 filtered_kenpom_table <- filtered_kenpom_table %>%
-  arrange(desc(AdjEM))
+  arrange(desc(AdjT))
 
 original_col_names <- colnames(filtered_kenpom_table)
 
@@ -130,8 +130,8 @@ combined_table <- combined_table %>%
 combined_table <- combined_table %>%
   dplyr::select(AwayRanking, Statistic, HomeRanking, everything()) %>%
   dplyr::select(-Away, -Home, -AwayPercentage, -HomePercentage) %>%
-  add_row(Statistic = "Record", AwayRanking = "4-5", HomeRanking = "5-2", .before = 1) %>%
-  add_row(Statistic = "Kenpom Ranking", AwayRanking = "280", HomeRanking = "60", .before = 1) %>%
+  add_row(Statistic = "Record", AwayRanking = "7-1", HomeRanking = "7-1", .before = 1) %>%
+  add_row(Statistic = "Kenpom Ranking", AwayRanking = "12", HomeRanking = "4", .before = 1) %>%
   mutate(Statistic = factor(Statistic, levels = c("Record", "Kenpom Ranking", "Scoring Margin", "AdjO.1", "AdjD.1", "AdjT.1", "Luck.1", "Assist/Turnover Ratio", "Turnovers Forced Per Game", "Rebound Margin", "Rebounds Per Game", "Rebounds (Offensive) Per Game", "Rebounds (Defensive) Per Game", "Effective FG pct", "Field Goal Percentage", "Free Throw Percentage", "Free Throw Attempts Per Game", "Free Throws Made Per Game", "Three Point Percentage", "Three Point Attempts Per Game", "Three Pointers Per Game"))) %>%
   mutate(Statistic = fct_recode(Statistic,
                                 "Adjusted Offensive Efficiency" = "AdjO.1",
@@ -141,8 +141,8 @@ combined_table <- combined_table %>%
   )) %>%
   arrange(Statistic)
 
-away_label <- "<img src='https://content.sportslogos.net/logos/34/820/full/8688_sacred_heart_pioneers-misc-2004.png' style='height:50px;' />"
-home_label <- "<img src='https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/St._John%27s_Red_Storm_logo.svg/800px-St._John%27s_Red_Storm_logo.svg.png' style='height:50px;' />"
+away_label <- "<img src='http://web2.ncaa.org/ncaa_style/img/All_Logos/sm/457.gif' style='height:50px;' />"
+home_label <- "<img src='http://web2.ncaa.org/ncaa_style/img/All_Logos/sm/164.gif' style='height:50px;' />"
 #middle_label <- "<img src= 'https://www.bigeast.com/common/controls/image_handler.aspx?thumb_id=0&image_path=/images/2022/5/19/BIG_12_BIG_EAST.png' style='height:50px;' />"
 
 combined_table <- combined_table %>%
@@ -178,7 +178,7 @@ combined_table <- combined_table %>%
 
 gt_table <- gt(combined_table) %>%
   tab_header(
-    title = md("**Sacred Heart @ St. John's 12/6/23**"),
+    title = md("**North Carolina @ Uconn 12/5/23**"),
     subtitle = md("D1 Percentile Rankings")
   ) %>%
   cols_label(
