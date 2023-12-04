@@ -228,3 +228,5 @@ gt_table <- gt(combined_table) %>%
 
 # Print the gt table
 print(gt_table)
+
+gtsave(gt_table, "/Users/Mason/Desktop/rimages/matchup.png", expand = 10)
