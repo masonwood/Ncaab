@@ -23,7 +23,7 @@ game_ids <- schedule$game_id[1:7]
 shots <- get_pbp_game(game_ids)
 
 shots_with_loc <- shots %>%
-  filter(!is.na(shot_x) & !is.na(shot_y))
+  filter(!is.na(shot_x) & !is.na(shot_y) & !free_throw)
 
 #court_image <- png::readPNG("/Users/Mason/Desktop/testingdata/court.png")
 
