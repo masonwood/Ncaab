@@ -7,32 +7,26 @@ library(gt)
 library(gtExtras)
 library(scales)
 
-# Define the URL
 away_url <- "https://stats.ncaa.org/teams/561063"
 
 # Fetching the webpage
 away_webpage <- httr::GET(away_url, user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"))
 away_html_data <- rvest::read_html(away_webpage)
 
-# Extracting tables and converting to dataframe
 away_tables <- away_html_data %>% html_nodes("table")
 away_ncaa_table <- away_tables %>% .[[3]] %>% html_table(fill = TRUE)
 
-# Define the URL
 home_url <- "https://stats.ncaa.org/teams/561074"
 
-# Fetching the webpage
 home_webpage <- httr::GET(home_url, user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"))
 home_html_data <- rvest::read_html(home_webpage)
 
-# Extracting tables and converting to dataframe
 home_tables <- home_html_data %>% html_nodes("table")
 home_ncaa_table <- home_tables %>% .[[3]] %>% html_table(fill = TRUE)
 
 away_ncaa_table <- away_ncaa_table %>% dplyr::rename(Stat = X1, Away_Rank = X2)
 home_ncaa_table <- home_ncaa_table %>% dplyr::rename(Stat = X1, Home_Rank = X2)
 
-# Select only the columns you want to compare, using dplyr's select function explicitly
 away_ncaa_table_selected <- away_ncaa_table %>% dplyr::select(Stat, Away_Rank)
 home_ncaa_table_selected <- home_ncaa_table %>% dplyr::select(Stat, Home_Rank)
 
@@ -62,13 +56,11 @@ kenpom_table <- tables %>%
   .[[1]] %>% 
   html_table(fill = TRUE)
 
-# Convert the first row to a character vector to ensure proper name handling
 col_names <- as.character(unlist(kenpom_table[1, ]))
 
 # Make the names unique
 unique_col_names <- make.unique(col_names)
 
-# Remove the first row and set the unique column names
 kenpom_table <- kenpom_table[-1, ]
 colnames(kenpom_table) <- unique_col_names
 
@@ -79,7 +71,7 @@ filtered_kenpom_table <- kenpom_table %>%
   filter(Team == "Sacred Heart" | Team == "St. John's")
 
 
-#may have to be toggled depending on home/away + stat
+# May have to be toggled depending on home/away + stat
 filtered_kenpom_table <- filtered_kenpom_table %>%
   arrange(desc(AdjEM))
 
@@ -88,19 +80,14 @@ original_col_names <- colnames(filtered_kenpom_table)
 # Transpose the filtered table
 transposed_table <- t(filtered_kenpom_table)
 
-# Create a data frame from the transposed table
 transposed_table_df <- as.data.frame(transposed_table)
 
-# Replace the first column with the original column names, which represent the statistics
 transposed_table_df <- cbind(Statistic = original_col_names[-1], transposed_table_df[-1, ])
 
-# Since the first row contains the team names, let's set them as the column names
 colnames(transposed_table_df)[-1] <- transposed_table_df[1, -1]
 
-# Remove the first row as it contains the old column names which are now the new column headers
 transposed_table_df <- transposed_table_df[-1, ]
 
-# Optionally, reset the row names to remove the row numbers
 rownames(transposed_table_df) <- NULL
 
 filtered_transposed_table_df <- transposed_table_df %>%
@@ -111,7 +98,6 @@ filtered_transposed_table_df <- transposed_table_df %>%
 colnames(comparison_table) <- paste0("Col", 1:ncol(comparison_table))
 colnames(filtered_transposed_table_df) <- paste0("Col", 1:ncol(filtered_transposed_table_df))
 
-# Combining the data frames
 combined_table <- bind_rows(comparison_table, filtered_transposed_table_df)
 
 combined_table <- combined_table %>%
@@ -124,7 +110,6 @@ combined_table <- combined_table %>%
 combined_table$Away <- as.numeric(as.character(combined_table$Away))
 combined_table$Home <- as.numeric(as.character(combined_table$Home))
 
-# Handle NA values. Replace NA with 0 or some other default value.
 combined_table$Away[is.na(combined_table$Away)] <- 0
 combined_table$Home[is.na(combined_table$Home)] <- 0
 
@@ -170,18 +155,13 @@ get_color <- function(value) {
   col_numeric(palette = c("#D40000", "white", "#00B400"), domain = c(0, 100))(value)
 }
 
-# Function to apply color to the entire cell content in the HTML string
 apply_color_to_cell <- function(html_string) {
-  # Extract the numeric value from the string
   numeric_value <- as.numeric(sub("<.*", "", html_string))
-  # Get the color for this numeric value
   color <- get_color(numeric_value)
-  # Construct the new HTML string with the color applied to the entire cell
   new_html_string <- sprintf("<div style='background-color:%s; padding: 5px;'>%s</div>", color, html_string)
   new_html_string
 }
 
-# Apply colors directly to the AwayRanking and HomeRanking columns
 combined_table <- combined_table %>%
   mutate(
     AwayRanking = ifelse(
@@ -196,7 +176,6 @@ combined_table <- combined_table %>%
     )
   )
 
-# Now create the gt table and apply the HTML content as markdown
 gt_table <- gt(combined_table) %>%
   tab_header(
     title = md("**Sacred Heart @ St. John's 12/6/23**"),
